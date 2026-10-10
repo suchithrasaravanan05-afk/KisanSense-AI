@@ -225,6 +225,30 @@ export const storageService = {
     return activities[index];
   },
 
+  saveActivityFeedback(
+    activityId: string,
+    feedbackData: {
+      completed: boolean;
+      farmer_feedback?: 'helpful' | 'unsure' | 'harmful' | 'resolved';
+      notes?: string;
+      activity_date?: string;
+    }
+  ): FieldActivity | null {
+    const updates: Partial<FieldActivity> = {
+      completed: feedbackData.completed,
+    };
+    if (feedbackData.farmer_feedback !== undefined) {
+      updates.farmer_feedback = feedbackData.farmer_feedback;
+    }
+    if (feedbackData.notes !== undefined) {
+      updates.notes = feedbackData.notes;
+    }
+    if (feedbackData.activity_date !== undefined) {
+      updates.activity_date = feedbackData.activity_date;
+    }
+    return this.updateFieldActivity(activityId, updates);
+  },
+
   getExpertReviews(): ExpertReview[] {
     return getStored<ExpertReview[]>(STORAGE_KEYS.EXPERT_REVIEWS, initialExpertReviews);
   },

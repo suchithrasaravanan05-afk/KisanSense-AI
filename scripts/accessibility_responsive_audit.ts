@@ -45,6 +45,7 @@ const modalFiles = [
   'ModalAddField.tsx',
   'ModalAddCrop.tsx',
   'ModalSoilTest.tsx',
+  'ModalFarmerFeedback.tsx',
   'SettingsView.tsx',
 ];
 

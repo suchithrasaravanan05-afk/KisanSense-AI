@@ -28,6 +28,7 @@ import { BottomNav } from '../components/BottomNav';
 import { ModalAddField } from '../components/ModalAddField';
 import { ModalAddCrop } from '../components/ModalAddCrop';
 import { ModalSoilTest } from '../components/ModalSoilTest';
+import { ModalFarmerFeedback, FarmerFeedbackSubmission } from '../components/ModalFarmerFeedback';
 import { OfflineBanner } from '../components/OfflineBanner';
 import { SyncStatusModal } from '../components/SyncStatusModal';
 
@@ -94,6 +95,8 @@ export default function Home() {
   const [syncQueue, setSyncQueue] = useState<QueuedSyncItem[]>([]);
   const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
+  const [feedbackTargetActivity, setFeedbackTargetActivity] = useState<FieldActivity | null>(null);
 
   // 8. Toast notification state
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -455,6 +458,7 @@ export default function Home() {
   const handleToggleActivity = (id: string, completed: boolean) => {
     storageService.updateFieldActivity(id, { completed });
     setActivities(storageService.getFieldActivities());
+    showToast(completed ? getTranslation(language, 'statusDone') : getTranslation(language, 'statusNotDone'));
   };
 
   const handleActivityFeedback = (
@@ -464,6 +468,58 @@ export default function Home() {
     storageService.updateFieldActivity(id, { farmer_feedback: feedback });
     setActivities(storageService.getFieldActivities());
     showToast(getTranslation(language, 'feedbackSubmitted'));
+  };
+
+  const handleOpenFeedbackModal = (act?: FieldActivity) => {
+    setFeedbackTargetActivity(act || null);
+    setIsFeedbackModalOpen(true);
+  };
+
+  const handleSaveFarmerFeedback = async (
+    submission: FarmerFeedbackSubmission
+  ): Promise<boolean> => {
+    if (!activeField) return false;
+
+    try {
+      let savedAct: FieldActivity | null = null;
+      if (submission.activity_id) {
+        savedAct = storageService.saveActivityFeedback(submission.activity_id, {
+          completed: submission.completed,
+          farmer_feedback: submission.feedback,
+          notes: submission.notes,
+          activity_date: submission.activity_date,
+        });
+      } else {
+        savedAct = storageService.createFieldActivity({
+          field_id: activeField.id,
+          type: 'expert_note',
+          title: submission.new_activity_title || 'Farmer Recommendation Outcome',
+          description: submission.notes || 'Farmer recorded implementation outcome for field recommendation.',
+          notes: submission.notes,
+          activity_date: submission.activity_date,
+          completed: submission.completed,
+          farmer_feedback: submission.feedback,
+        });
+      }
+
+      setActivities(storageService.getFieldActivities());
+
+      if (!isOnline && savedAct) {
+        storageService.enqueueSyncAction({
+          action_type: 'create_activity',
+          title: `Feedback: ${savedAct.title}`,
+          description: submission.notes || `Status: ${submission.completed ? 'Done' : 'Not done'}`,
+          payload: savedAct,
+        });
+        setSyncQueue(storageService.getSyncQueue());
+      }
+
+      showToast(getTranslation(language, 'feedbackSaveSuccess'));
+      return true;
+    } catch (err) {
+      console.error('Failed to save feedback:', err);
+      return false;
+    }
   };
 
   const handleUpdateExpertReview = (id: string, updates: Partial<ExpertReview>) => {
@@ -676,6 +732,7 @@ export default function Home() {
               onToggleComplete={handleToggleActivity}
               onSubmitFeedback={handleActivityFeedback}
               onSelectField={handleSelectField}
+              onOpenFeedbackModal={handleOpenFeedbackModal}
             />
           )}
 
@@ -751,6 +808,19 @@ export default function Home() {
         onSyncNow={handleSyncNow}
         onClearSynced={handleClearSynced}
       />
+
+      {/* Farmer Feedback & Activity Modal */}
+      {activeField && (
+        <ModalFarmerFeedback
+          isOpen={isFeedbackModalOpen}
+          onClose={() => setIsFeedbackModalOpen(false)}
+          activity={feedbackTargetActivity}
+          activities={activities}
+          activeField={activeField}
+          language={language}
+          onSaveFeedback={handleSaveFarmerFeedback}
+        />
+      )}
     </div>
   );
 }
