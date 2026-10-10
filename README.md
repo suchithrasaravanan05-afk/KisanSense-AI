@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # KisanSense AI (किसानसेंस AI)
 > **"Smarter decisions for healthier fields."**
 
@@ -321,3 +322,7 @@ To provide complete transparency for production evaluators:
 ## 📄 License
 
 This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details. Built for smallholder farmers with scientific agronomic integrity.
+=======
+# KisanSense-AI
+ Web app that helps farmers make field-specific decisions about fertilizer, irrigation, crop health, and weather.
+>>>>>>> eed566fae84c96566e6c0d703bbaec15c3767b8c
