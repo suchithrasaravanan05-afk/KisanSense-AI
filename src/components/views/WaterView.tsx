@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Field, Crop, WeatherData, Language, GrowthStage } from '../../types';
+import { Field, Crop, WeatherData, Language, GrowthStage, FieldFeedbackRecord } from '../../types';
 import { getTranslation } from '../../i18n/translations';
 import { storageService } from '../../services/storageService';
 import { SafetyBanner } from '../SafetyBanner';
@@ -35,9 +35,9 @@ import {
   ChevronUp,
   FlaskConical,
   Compass,
-  ArrowRight,
-  ShieldCheck,
   RefreshCw,
+  PlusCircle,
+  ShieldCheck,
 } from 'lucide-react';
 
 interface WaterViewProps {
@@ -48,6 +48,8 @@ interface WaterViewProps {
   weather: WeatherData;
   onLogIrrigation: (volumeLitres: number, notes: string) => void;
   onSelectField: (id: string) => void;
+  feedbacks?: FieldFeedbackRecord[];
+  onOpenFeedbackModal?: (activity?: any, feedback?: any, recommendation?: any) => void;
 }
 
 export const WaterView: React.FC<WaterViewProps> = ({
@@ -58,6 +60,8 @@ export const WaterView: React.FC<WaterViewProps> = ({
   weather,
   onLogIrrigation,
   onSelectField,
+  feedbacks = [],
+  onOpenFeedbackModal,
 }) => {
   const t = (key: string) => getTranslation(language, key);
 
@@ -937,19 +941,44 @@ export const WaterView: React.FC<WaterViewProps> = ({
               {calcResult.estimate_disclaimer}
             </p>
 
-            <button
-              id="btn-log-irrigation"
-              onClick={handleLog}
-              disabled={logged}
-              className={`w-full sm:w-auto px-5 py-3 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all btn-press shadow-md ${
-                logged
-                  ? 'bg-emerald-600 text-white cursor-default'
-                  : 'bg-sky-400 hover:bg-sky-300 text-sky-950 hover:shadow-lg'
-              }`}
-            >
-              <BookmarkCheck className="w-4 h-4" />
-              <span>{logged ? t('irrigationLoggedToast') : t('logIrrigationDone')}</span>
-            </button>
+            <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto justify-end">
+              {onOpenFeedbackModal && (
+                <button
+                  type="button"
+                  id="btn-water-record-outcome"
+                  onClick={() => {
+                    const existingFb = feedbacks.find(
+                      (f) => f.recommendation_type === 'irrigation' && f.field_id === activeField.id
+                    );
+                    onOpenFeedbackModal(undefined, existingFb, {
+                      title: `Irrigation: ${calcResult.calculations.net_depth_mm}mm (${calcResult.calculations.water_volume_litres.toLocaleString()}L)`,
+                      type: 'irrigation',
+                      description: `Recommended volume: ${calcResult.calculations.water_volume_litres} Litres. ${calcResult.explanation.summary}`,
+                      suggestedQuantity: calcResult.calculations.water_volume_litres,
+                      suggestedUnit: 'Litres',
+                    });
+                  }}
+                  className="w-full sm:w-auto px-4 py-3 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white transition-all btn-press shadow-md"
+                >
+                  <PlusCircle className="w-4 h-4" />
+                  <span>{t('recordOutcomeBtn')}</span>
+                </button>
+              )}
+
+              <button
+                id="btn-log-irrigation"
+                onClick={handleLog}
+                disabled={logged}
+                className={`w-full sm:w-auto px-5 py-3 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all btn-press shadow-md ${
+                  logged
+                    ? 'bg-emerald-600 text-white cursor-default'
+                    : 'bg-sky-400 hover:bg-sky-300 text-sky-950 hover:shadow-lg'
+                }`}
+              >
+                <BookmarkCheck className="w-4 h-4" />
+                <span>{logged ? t('irrigationLoggedToast') : t('logIrrigationDone')}</span>
+              </button>
+            </div>
           </div>
         </div>
       ) : (

@@ -118,7 +118,9 @@ export type SyncActionType =
   | 'create_soil_test'
   | 'create_activity'
   | 'create_scan'
-  | 'create_review';
+  | 'create_review'
+  | 'save_feedback'
+  | 'delete_feedback';
 
 export interface QueuedSyncItem {
   id: string;
@@ -188,6 +190,28 @@ export type ActivityType =
   | 'weather_event'
   | 'expert_note';
 
+export type FeedbackStatus = 'done' | 'partly_done' | 'not_done';
+export type FeedbackOutcome = 'improved' | 'no_change' | 'got_worse' | 'too_early';
+
+export interface FieldFeedbackRecord {
+  id: string;
+  field_id: string;
+  recommendation_id?: string;
+  recommendation_title: string;
+  recommendation_type: ActivityType | 'irrigation' | 'fertilizer' | 'scan' | 'soil_test' | 'general';
+  status: FeedbackStatus;
+  completed_date?: string;
+  actual_quantity?: number;
+  actual_unit?: string;
+  farmer_note?: string;
+  outcome?: FeedbackOutcome;
+  outcome_date?: string;
+  outcome_note?: string;
+  follow_up_image_url?: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface FieldActivity {
   id: string;
   field_id: string;
@@ -201,6 +225,17 @@ export interface FieldActivity {
   completed: boolean;
   image_url?: string;
   farmer_feedback?: 'helpful' | 'unsure' | 'harmful' | 'resolved';
+  // Linked Field Feedback & Outcome Tracker fields
+  feedback_id?: string;
+  feedback_status?: FeedbackStatus;
+  actual_quantity?: number;
+  actual_unit?: string;
+  completed_date?: string;
+  farmer_note?: string;
+  outcome?: FeedbackOutcome;
+  outcome_date?: string;
+  outcome_note?: string;
+  follow_up_image_url?: string;
 }
 
 export interface ExpertReview {

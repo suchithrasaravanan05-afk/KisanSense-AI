@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo, useEffect } from 'react';
-import { Field, Crop, SoilTest, Language } from '../../types';
+import { Field, Crop, SoilTest, Language, FieldFeedbackRecord } from '../../types';
 import { getTranslation } from '../../i18n/translations';
 import { storageService } from '../../services/storageService';
 import { SafetyBanner } from '../SafetyBanner';
@@ -29,6 +29,8 @@ interface FertilizerViewProps {
   isOnline?: boolean;
   onOpenSoilModal: () => void;
   onSelectField: (id: string) => void;
+  feedbacks?: FieldFeedbackRecord[];
+  onOpenFeedbackModal?: (activity?: any, feedback?: any, recommendation?: any) => void;
 }
 
 export const FertilizerView: React.FC<FertilizerViewProps> = ({
@@ -40,6 +42,8 @@ export const FertilizerView: React.FC<FertilizerViewProps> = ({
   isOnline = true,
   onOpenSoilModal,
   onSelectField,
+  feedbacks = [],
+  onOpenFeedbackModal,
 }) => {
   const t = (key: string) => getTranslation(language, key);
 
@@ -226,6 +230,71 @@ export const FertilizerView: React.FC<FertilizerViewProps> = ({
             <p className="text-xs text-agri-dark/80 bg-gray-50 p-3 rounded-2xl border border-gray-100 leading-relaxed">
               {rec.explanation}
             </p>
+
+            {/* Record Outcome Action on Fertilizer Card */}
+            {onOpenFeedbackModal && (
+              <div className="pt-2 flex items-center justify-between border-t border-gray-100 flex-wrap gap-2">
+                <div>
+                  {(() => {
+                    const fertFb = feedbacks.find(
+                      (f) =>
+                        (f.recommendation_id === rec.id || f.recommendation_type === 'fertilizer') &&
+                        f.field_id === activeField.id
+                    );
+                    if (!fertFb) return null;
+                    return (
+                      <span className="text-[11px] px-2.5 py-1 rounded-full font-bold bg-purple-50 text-purple-800 border border-purple-200 inline-flex items-center gap-1">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-purple-600" />
+                        <span>Status: {fertFb.status === 'done' ? t('statusDoneFull') : fertFb.status === 'partly_done' ? t('statusPartlyDone') : t('statusNotDoneFull')}</span>
+                        {fertFb.outcome && (
+                          <span className="text-emerald-700 ml-1">
+                            • {fertFb.outcome === 'improved'
+                              ? t('outcomeImproved')
+                              : fertFb.outcome === 'no_change'
+                              ? t('outcomeNoChange')
+                              : fertFb.outcome === 'got_worse'
+                              ? t('outcomeGotWorse')
+                              : t('outcomeTooEarly')}
+                          </span>
+                        )}
+                      </span>
+                    );
+                  })()}
+                </div>
+
+                <button
+                  type="button"
+                  id="btn-record-fertilizer-outcome"
+                  onClick={() => {
+                    const existingFb = feedbacks.find(
+                      (f) =>
+                        (f.recommendation_id === rec.id || f.recommendation_type === 'fertilizer') &&
+                        f.field_id === activeField.id
+                    );
+                    onOpenFeedbackModal(undefined, existingFb, {
+                      id: rec.id,
+                      title: `Nutrient Plan for ${fallbackCrop.crop_name} (${activeField.area} ${activeField.area_unit}s)`,
+                      type: 'fertilizer',
+                      description: `Target: ${rec.recommended_nutrients.nitrogen_kg_ha}kg N, ${rec.recommended_nutrients.phosphorus_kg_ha}kg P, ${rec.recommended_nutrients.potassium_kg_ha}kg K. ${rec.suggested_timing}`,
+                      suggestedQuantity: rec.recommended_nutrients.nitrogen_kg_ha,
+                      suggestedUnit: 'kg',
+                    });
+                  }}
+                  className="px-4 py-2 rounded-xl bg-purple-700 hover:bg-purple-800 text-white text-xs font-bold transition-all shadow-sm btn-press flex items-center gap-1.5"
+                >
+                  <PlusCircle className="w-4 h-4" />
+                  <span>
+                    {feedbacks.some(
+                      (f) =>
+                        (f.recommendation_id === rec.id || f.recommendation_type === 'fertilizer') &&
+                        f.field_id === activeField.id
+                    )
+                      ? t('updateOutcomeBtn')
+                      : t('recordOutcomeBtn')}
+                  </span>
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Split Application Guidance */}

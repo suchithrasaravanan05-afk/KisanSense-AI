@@ -103,7 +103,16 @@ CREATE TABLE IF NOT EXISTS field_activities (
     notes TEXT,
     activity_date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     completed BOOLEAN DEFAULT TRUE,
-    farmer_feedback VARCHAR(50) -- 'helpful', 'unsure', 'harmful', 'resolved'
+    farmer_feedback VARCHAR(50), -- 'helpful', 'unsure', 'harmful', 'resolved'
+    feedback_id UUID,
+    feedback_status VARCHAR(50), -- 'done', 'partly_done', 'not_done'
+    actual_quantity DECIMAL(12, 2),
+    actual_unit VARCHAR(50),
+    completed_date TIMESTAMP WITH TIME ZONE,
+    outcome VARCHAR(50), -- 'improved', 'no_change', 'got_worse', 'too_early'
+    outcome_date TIMESTAMP WITH TIME ZONE,
+    outcome_note TEXT,
+    follow_up_image_url TEXT
 );
 
 -- 9. Expert Reviews Table
@@ -116,9 +125,31 @@ CREATE TABLE IF NOT EXISTS expert_reviews (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Indexes for rapid timeline and field queries
+-- 10. Field Feedback & Outcome Records Table
+CREATE TABLE IF NOT EXISTS field_feedbacks (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    field_id UUID REFERENCES fields(id) ON DELETE CASCADE,
+    recommendation_id VARCHAR(100),
+    recommendation_title VARCHAR(255) NOT NULL,
+    recommendation_type VARCHAR(50) NOT NULL, -- 'irrigation', 'fertilizer', 'scan', 'soil_test', 'general'
+    status VARCHAR(50) NOT NULL, -- 'done', 'partly_done', 'not_done'
+    completed_date TIMESTAMP WITH TIME ZONE,
+    actual_quantity DECIMAL(12, 2),
+    actual_unit VARCHAR(50),
+    farmer_note TEXT,
+    outcome VARCHAR(50), -- 'improved', 'no_change', 'got_worse', 'too_early'
+    outcome_date TIMESTAMP WITH TIME ZONE,
+    outcome_note TEXT,
+    follow_up_image_url TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Indexes for rapid timeline, field, and feedback queries
 CREATE INDEX IF NOT EXISTS idx_fields_user ON fields(user_id);
 CREATE INDEX IF NOT EXISTS idx_crops_field ON crops(field_id);
 CREATE INDEX IF NOT EXISTS idx_soil_tests_field ON soil_tests(field_id);
 CREATE INDEX IF NOT EXISTS idx_activities_field ON field_activities(field_id);
 CREATE INDEX IF NOT EXISTS idx_reviews_status ON expert_reviews(review_status);
+CREATE INDEX IF NOT EXISTS idx_feedbacks_field ON field_feedbacks(field_id);
+CREATE INDEX IF NOT EXISTS idx_feedbacks_rec ON field_feedbacks(recommendation_id);

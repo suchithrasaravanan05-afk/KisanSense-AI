@@ -12,6 +12,7 @@ import {
   Language,
   User,
   GrowthStage,
+  FieldFeedbackRecord,
 } from '../../types';
 import { getTranslation } from '../../i18n/translations';
 import { SafetyBanner } from '../SafetyBanner';
@@ -69,6 +70,20 @@ interface DashboardViewProps {
   onLogIrrigation?: (volumeLitres: number, notes: string) => void;
   onLanguageChange?: (lang: Language) => void;
   weatherError?: boolean;
+  feedbacks?: FieldFeedbackRecord[];
+  onOpenFeedbackModal?: (
+    activity?: FieldActivity,
+    feedback?: FieldFeedbackRecord,
+    recommendation?: {
+      id?: string;
+      title: string;
+      type: 'irrigation' | 'fertilizer' | 'scan' | 'soil_test' | 'general';
+      description?: string;
+      suggestedQuantity?: number;
+      suggestedUnit?: string;
+      date?: string;
+    }
+  ) => void;
 }
 
 type PreviewState = 'normal' | 'loading' | 'empty' | 'weather_error';
@@ -94,6 +109,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onLogIrrigation,
   onLanguageChange,
   weatherError = false,
+  feedbacks = [],
+  onOpenFeedbackModal,
 }) => {
   const t = (key: string) => getTranslation(language, key);
 
@@ -717,7 +734,39 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              {(() => {
+                const irrigationFeedback = feedbacks.find(
+                  (f) =>
+                    (f.recommendation_id === irrigationRec.id || f.recommendation_type === 'irrigation') &&
+                    f.field_id === activeField?.id
+                );
+                if (!irrigationFeedback) return null;
+                return (
+                  <span className="text-[11px] px-2.5 py-0.5 rounded-full font-bold bg-cyan-500/20 text-cyan-200 border border-cyan-400/40 flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3 text-cyan-300" />
+                    <span>
+                      {irrigationFeedback.status === 'done'
+                        ? t('statusDoneFull')
+                        : irrigationFeedback.status === 'partly_done'
+                        ? t('statusPartlyDone')
+                        : t('statusNotDoneFull')}
+                    </span>
+                    {irrigationFeedback.outcome && (
+                      <span className="text-emerald-300 ml-1">
+                        • {irrigationFeedback.outcome === 'improved'
+                          ? t('outcomeImproved')
+                          : irrigationFeedback.outcome === 'no_change'
+                          ? t('outcomeNoChange')
+                          : irrigationFeedback.outcome === 'got_worse'
+                          ? t('outcomeGotWorse')
+                          : t('outcomeTooEarly')}
+                      </span>
+                    )}
+                  </span>
+                );
+              })()}
+
               <span
                 className={`text-[11px] px-3 py-1 rounded-full font-semibold border ${
                   weather.is_stale
@@ -819,6 +868,41 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 <Check className="w-4 h-4" />
                 <span>{quickLogSuccess ? t('waterLoggedSuccess') : t('logWaterNow')}</span>
               </button>
+
+              {/* Record Outcome Button */}
+              {onOpenFeedbackModal && (
+                <button
+                  type="button"
+                  id="btn-record-irrigation-outcome"
+                  onClick={() => {
+                    const existingFb = feedbacks.find(
+                      (f) =>
+                        (f.recommendation_id === irrigationRec.id || f.recommendation_type === 'irrigation') &&
+                        f.field_id === activeField?.id
+                    );
+                    onOpenFeedbackModal(undefined, existingFb, {
+                      id: irrigationRec.id,
+                      title: `Next Irrigation: ${irrigationRec.net_depth_mm}mm (${irrigationRec.water_volume_litres}L)`,
+                      type: 'irrigation',
+                      description: `Net depth ${irrigationRec.net_depth_mm}mm, ${irrigationRec.water_volume_litres} Litres recommendation. ${irrigationRec.recommended_time}`,
+                      suggestedQuantity: irrigationRec.water_volume_litres,
+                      suggestedUnit: 'Litres',
+                    });
+                  }}
+                  className="px-4 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs transition-all flex items-center justify-center gap-1.5 btn-press shadow-md"
+                >
+                  <PlusCircle className="w-4 h-4" />
+                  <span>
+                    {feedbacks.some(
+                      (f) =>
+                        (f.recommendation_id === irrigationRec.id || f.recommendation_type === 'irrigation') &&
+                        f.field_id === activeField?.id
+                    )
+                      ? t('updateOutcomeBtn')
+                      : t('recordOutcomeBtn')}
+                  </span>
+                </button>
+              )}
 
               {/* Full Planner Button */}
               <button
@@ -1387,13 +1471,48 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   >
                     {act.completed ? t('doneStatusBadge') : t('notDoneStatusBadge')}
                   </span>
-                  {act.farmer_feedback && (
-                    <span className="text-[9px] font-medium text-gray-500">
-                      {act.farmer_feedback === 'helpful' ? t('feedbackHelpful') :
-                       act.farmer_feedback === 'resolved' ? t('feedbackResolved') :
-                       act.farmer_feedback === 'unsure' ? t('feedbackUnsure') :
-                       t('feedbackHarmful')}
-                    </span>
+
+                  {(() => {
+                    const fb = feedbacks.find((f) => f.recommendation_id === act.id || f.id === act.feedback_id);
+                    if (fb?.outcome) {
+                      return (
+                        <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                          {fb.outcome === 'improved'
+                            ? t('outcomeImproved')
+                            : fb.outcome === 'no_change'
+                            ? t('outcomeNoChange')
+                            : fb.outcome === 'got_worse'
+                            ? t('outcomeGotWorse')
+                            : t('outcomeTooEarly')}
+                        </span>
+                      );
+                    }
+                    if (act.farmer_feedback) {
+                      return (
+                        <span className="text-[9px] font-medium text-gray-500">
+                          {act.farmer_feedback === 'helpful' ? t('feedbackHelpful') :
+                           act.farmer_feedback === 'resolved' ? t('feedbackResolved') :
+                           act.farmer_feedback === 'unsure' ? t('feedbackUnsure') :
+                           t('feedbackHarmful')}
+                        </span>
+                      );
+                    }
+                    return null;
+                  })()}
+
+                  {onOpenFeedbackModal && (
+                    <button
+                      type="button"
+                      id={`btn-recent-record-outcome-${act.id}`}
+                      onClick={() => {
+                        const fb = feedbacks.find((f) => f.recommendation_id === act.id || f.id === act.feedback_id);
+                        onOpenFeedbackModal(act, fb);
+                      }}
+                      className="text-[10px] font-bold text-agri-primary hover:text-agri-accent hover:underline flex items-center gap-1 mt-0.5"
+                    >
+                      <PlusCircle className="w-3 h-3" />
+                      <span>{t('recordOutcomeBtn')}</span>
+                    </button>
                   )}
                 </div>
               </div>

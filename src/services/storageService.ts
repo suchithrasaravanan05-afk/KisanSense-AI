@@ -12,6 +12,7 @@ import {
   FertilizerRecommendation,
   QueuedSyncItem,
   CachedRecommendations,
+  FieldFeedbackRecord,
 } from '../types';
 import {
   initialUser,
@@ -21,6 +22,7 @@ import {
   initialScanResults,
   initialActivities,
   initialExpertReviews,
+  initialFeedbackRecords,
 } from '../data/mockData';
 
 const STORAGE_KEYS = {
@@ -37,6 +39,7 @@ const STORAGE_KEYS = {
   SYNC_QUEUE: 'kisansense_sync_queue',
   CACHED_WEATHER: 'kisansense_cached_weather',
   LATEST_RECOMMENDATIONS: 'kisansense_latest_recommendations',
+  FEEDBACKS: 'kisansense_feedbacks',
 };
 
 // Safe JSON parser for localStorage
@@ -249,6 +252,138 @@ export const storageService = {
     return this.updateFieldActivity(activityId, updates);
   },
 
+  // --- Field Feedback & Outcome Tracker Methods ---
+  getFeedbackRecords(fieldId?: string): FieldFeedbackRecord[] {
+    const feedbacks = getStored<FieldFeedbackRecord[]>(STORAGE_KEYS.FEEDBACKS, initialFeedbackRecords);
+    if (!fieldId) return feedbacks;
+    return feedbacks.filter((f) => f.field_id === fieldId);
+  },
+
+  getFeedbackRecord(id: string): FieldFeedbackRecord | undefined {
+    return this.getFeedbackRecords().find((f) => f.id === id);
+  },
+
+  getFeedbackForRecommendation(recommendationId: string): FieldFeedbackRecord | undefined {
+    return this.getFeedbackRecords().find((f) => f.recommendation_id === recommendationId);
+  },
+
+  saveFeedbackRecord(
+    recordData: Omit<FieldFeedbackRecord, 'id' | 'created_at' | 'updated_at'> & { id?: string }
+  ): FieldFeedbackRecord {
+    const feedbacks = this.getFeedbackRecords();
+    const now = new Date().toISOString();
+    let saved: FieldFeedbackRecord;
+
+    const existingIndex = recordData.id ? feedbacks.findIndex((f) => f.id === recordData.id) : -1;
+    if (existingIndex >= 0) {
+      saved = {
+        ...feedbacks[existingIndex],
+        ...recordData,
+        id: feedbacks[existingIndex].id,
+        updated_at: now,
+      };
+      feedbacks[existingIndex] = saved;
+    } else {
+      saved = {
+        ...recordData,
+        id: recordData.id || `fb-${Date.now()}`,
+        created_at: now,
+        updated_at: now,
+      };
+      feedbacks.unshift(saved);
+    }
+    setStored(STORAGE_KEYS.FEEDBACKS, feedbacks);
+
+    // Synchronize linked activity in field timeline
+    if (saved.recommendation_id) {
+      const activities = this.getFieldActivities();
+      const linkedActivity = activities.find((a) => a.id === saved.recommendation_id);
+      if (linkedActivity) {
+        this.updateFieldActivity(linkedActivity.id, {
+          feedback_id: saved.id,
+          feedback_status: saved.status,
+          completed: saved.status === 'done' || saved.status === 'partly_done',
+          actual_quantity: saved.actual_quantity,
+          actual_unit: saved.actual_unit,
+          completed_date: saved.completed_date,
+          farmer_note: saved.farmer_note,
+          outcome: saved.outcome,
+          outcome_date: saved.outcome_date,
+          outcome_note: saved.outcome_note,
+          follow_up_image_url: saved.follow_up_image_url,
+        });
+      } else {
+        // If triggered from recommendation card (e.g. Next Irrigation on Dashboard)
+        this.createFieldActivity({
+          field_id: saved.field_id,
+          type: (saved.recommendation_type === 'general' ? 'expert_note' : saved.recommendation_type) as any,
+          title: saved.recommendation_title || 'Recommendation Feedback & Outcome',
+          description: saved.farmer_note || `Recorded status: ${saved.status.replace('_', ' ')}`,
+          activity_date: saved.completed_date || now,
+          completed: saved.status === 'done' || saved.status === 'partly_done',
+          feedback_id: saved.id,
+          feedback_status: saved.status,
+          actual_quantity: saved.actual_quantity,
+          actual_unit: saved.actual_unit,
+          completed_date: saved.completed_date,
+          farmer_note: saved.farmer_note,
+          outcome: saved.outcome,
+          outcome_date: saved.outcome_date,
+          outcome_note: saved.outcome_note,
+          follow_up_image_url: saved.follow_up_image_url,
+        });
+      }
+    } else {
+      this.createFieldActivity({
+        field_id: saved.field_id,
+        type: (saved.recommendation_type === 'general' ? 'expert_note' : saved.recommendation_type) as any,
+        title: saved.recommendation_title || 'Recommendation Feedback & Outcome',
+        description: saved.farmer_note || `Recorded status: ${saved.status.replace('_', ' ')}`,
+        activity_date: saved.completed_date || now,
+        completed: saved.status === 'done' || saved.status === 'partly_done',
+        feedback_id: saved.id,
+        feedback_status: saved.status,
+        actual_quantity: saved.actual_quantity,
+        actual_unit: saved.actual_unit,
+        completed_date: saved.completed_date,
+        farmer_note: saved.farmer_note,
+        outcome: saved.outcome,
+        outcome_date: saved.outcome_date,
+        outcome_note: saved.outcome_note,
+        follow_up_image_url: saved.follow_up_image_url,
+      });
+    }
+
+    return saved;
+  },
+
+  deleteFeedbackRecord(id: string): boolean {
+    const feedbacks = this.getFeedbackRecords();
+    const target = feedbacks.find((f) => f.id === id);
+    if (!target) return false;
+
+    const filtered = feedbacks.filter((f) => f.id !== id);
+    setStored(STORAGE_KEYS.FEEDBACKS, filtered);
+
+    // Unlink activity
+    const activities = this.getFieldActivities();
+    const linked = activities.find((a) => a.feedback_id === id || a.id === target.recommendation_id);
+    if (linked) {
+      this.updateFieldActivity(linked.id, {
+        feedback_id: undefined,
+        feedback_status: undefined,
+        outcome: undefined,
+        outcome_date: undefined,
+        outcome_note: undefined,
+        actual_quantity: undefined,
+        actual_unit: undefined,
+        completed_date: undefined,
+        follow_up_image_url: undefined,
+      });
+    }
+    return true;
+  },
+
   getExpertReviews(): ExpertReview[] {
     return getStored<ExpertReview[]>(STORAGE_KEYS.EXPERT_REVIEWS, initialExpertReviews);
   },
@@ -391,6 +526,7 @@ export const storageService = {
     localStorage.setItem(STORAGE_KEYS.SCAN_RESULTS, JSON.stringify(initialScanResults));
     localStorage.setItem(STORAGE_KEYS.ACTIVITIES, JSON.stringify(initialActivities));
     localStorage.setItem(STORAGE_KEYS.EXPERT_REVIEWS, JSON.stringify(initialExpertReviews));
+    localStorage.setItem(STORAGE_KEYS.FEEDBACKS, JSON.stringify(initialFeedbackRecords));
     localStorage.setItem(STORAGE_KEYS.ACTIVE_FIELD_ID, initialFields[0].id);
   },
 };

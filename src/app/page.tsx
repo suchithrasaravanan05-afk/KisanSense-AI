@@ -13,6 +13,7 @@ import {
   User,
   IrrigationRecommendation,
   QueuedSyncItem,
+  FieldFeedbackRecord,
 } from '../types';
 import { storageService } from '../services/storageService';
 import { fetchWeatherData, setSimulateWeatherFailure } from '../services/weatherService';
@@ -95,8 +96,19 @@ export default function Home() {
   const [syncQueue, setSyncQueue] = useState<QueuedSyncItem[]>([]);
   const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [feedbacks, setFeedbacks] = useState<FieldFeedbackRecord[]>([]);
   const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
   const [feedbackTargetActivity, setFeedbackTargetActivity] = useState<FieldActivity | null>(null);
+  const [feedbackTargetExisting, setFeedbackTargetExisting] = useState<FieldFeedbackRecord | null>(null);
+  const [feedbackTargetRecommendation, setFeedbackTargetRecommendation] = useState<{
+    id?: string;
+    title: string;
+    type: 'irrigation' | 'fertilizer' | 'scan' | 'soil_test' | 'general';
+    description?: string;
+    suggestedQuantity?: number;
+    suggestedUnit?: string;
+    date?: string;
+  } | null>(null);
 
   // 8. Toast notification state
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -196,6 +208,7 @@ export default function Home() {
     setScanResults(storageService.getScanResults());
     setActivities(storageService.getFieldActivities());
     setExpertReviews(storageService.getExpertReviews());
+    setFeedbacks(storageService.getFeedbackRecords());
     setSyncQueue(storageService.getSyncQueue());
   }, []);
 
@@ -470,8 +483,26 @@ export default function Home() {
     showToast(getTranslation(language, 'feedbackSubmitted'));
   };
 
-  const handleOpenFeedbackModal = (act?: FieldActivity) => {
+  const handleOpenFeedbackModal = (
+    act?: FieldActivity,
+    fb?: FieldFeedbackRecord,
+    rec?: {
+      id?: string;
+      title: string;
+      type: 'irrigation' | 'fertilizer' | 'scan' | 'soil_test' | 'general';
+      description?: string;
+      suggestedQuantity?: number;
+      suggestedUnit?: string;
+      date?: string;
+    }
+  ) => {
     setFeedbackTargetActivity(act || null);
+    setFeedbackTargetExisting(
+      fb ||
+        (act?.feedback_id ? storageService.getFeedbackRecord(act.feedback_id) || null : null) ||
+        (act ? storageService.getFeedbackForRecommendation(act.id) || null : null)
+    );
+    setFeedbackTargetRecommendation(rec || null);
     setIsFeedbackModalOpen(true);
   };
 
@@ -481,35 +512,32 @@ export default function Home() {
     if (!activeField) return false;
 
     try {
-      let savedAct: FieldActivity | null = null;
-      if (submission.activity_id) {
-        savedAct = storageService.saveActivityFeedback(submission.activity_id, {
-          completed: submission.completed,
-          farmer_feedback: submission.feedback,
-          notes: submission.notes,
-          activity_date: submission.activity_date,
-        });
-      } else {
-        savedAct = storageService.createFieldActivity({
-          field_id: activeField.id,
-          type: 'expert_note',
-          title: submission.new_activity_title || 'Farmer Recommendation Outcome',
-          description: submission.notes || 'Farmer recorded implementation outcome for field recommendation.',
-          notes: submission.notes,
-          activity_date: submission.activity_date,
-          completed: submission.completed,
-          farmer_feedback: submission.feedback,
-        });
-      }
+      const saved = storageService.saveFeedbackRecord({
+        id: submission.id,
+        field_id: activeField.id,
+        recommendation_id: submission.recommendation_id,
+        recommendation_title: submission.recommendation_title,
+        recommendation_type: submission.recommendation_type,
+        status: submission.status,
+        completed_date: submission.completed_date,
+        actual_quantity: submission.actual_quantity,
+        actual_unit: submission.actual_unit,
+        farmer_note: submission.farmer_note,
+        outcome: submission.outcome,
+        outcome_date: submission.outcome_date,
+        outcome_note: submission.outcome_note,
+        follow_up_image_url: submission.follow_up_image_url,
+      });
 
+      setFeedbacks(storageService.getFeedbackRecords());
       setActivities(storageService.getFieldActivities());
 
-      if (!isOnline && savedAct) {
+      if (!isOnline && saved) {
         storageService.enqueueSyncAction({
-          action_type: 'create_activity',
-          title: `Feedback: ${savedAct.title}`,
-          description: submission.notes || `Status: ${submission.completed ? 'Done' : 'Not done'}`,
-          payload: savedAct,
+          action_type: 'save_feedback',
+          title: `Feedback: ${saved.recommendation_title}`,
+          description: `Status: ${saved.status}${saved.outcome ? ` • Outcome: ${saved.outcome}` : ''}`,
+          payload: saved,
         });
         setSyncQueue(storageService.getSyncQueue());
       }
@@ -518,6 +546,32 @@ export default function Home() {
       return true;
     } catch (err) {
       console.error('Failed to save feedback:', err);
+      return false;
+    }
+  };
+
+  const handleDeleteFarmerFeedback = async (id: string): Promise<boolean> => {
+    try {
+      const success = storageService.deleteFeedbackRecord(id);
+      if (success) {
+        setFeedbacks(storageService.getFeedbackRecords());
+        setActivities(storageService.getFieldActivities());
+
+        if (!isOnline) {
+          storageService.enqueueSyncAction({
+            action_type: 'delete_feedback',
+            title: `Delete Feedback: ${id}`,
+            payload: { id },
+          });
+          setSyncQueue(storageService.getSyncQueue());
+        }
+
+        showToast(getTranslation(language, 'feedbackDeletedToast'));
+        return true;
+      }
+      return false;
+    } catch (err) {
+      console.error('Failed to delete feedback:', err);
       return false;
     }
   };
@@ -538,6 +592,7 @@ export default function Home() {
     setScanResults(storageService.getScanResults());
     setActivities(storageService.getFieldActivities());
     setExpertReviews(storageService.getExpertReviews());
+    setFeedbacks(storageService.getFeedbackRecords());
     showToast(getTranslation(language, 'demoDataLoaded'));
   };
 
@@ -626,6 +681,8 @@ export default function Home() {
               onLogIrrigation={handleLogIrrigation}
               onLanguageChange={handleLanguageChange}
               weatherError={simulateWeatherFail}
+              feedbacks={feedbacks}
+              onOpenFeedbackModal={handleOpenFeedbackModal}
             />
           )}
 
@@ -707,6 +764,8 @@ export default function Home() {
               weather={weather}
               onLogIrrigation={handleLogIrrigation}
               onSelectField={handleSelectField}
+              feedbacks={feedbacks}
+              onOpenFeedbackModal={handleOpenFeedbackModal}
             />
           )}
 
@@ -720,6 +779,8 @@ export default function Home() {
               isOnline={isOnline}
               onOpenSoilModal={() => setIsSoilModalOpen(true)}
               onSelectField={handleSelectField}
+              feedbacks={feedbacks}
+              onOpenFeedbackModal={handleOpenFeedbackModal}
             />
           )}
 
@@ -729,10 +790,12 @@ export default function Home() {
               fields={fields}
               activeField={activeField}
               activities={activities}
+              feedbacks={feedbacks}
               onToggleComplete={handleToggleActivity}
               onSubmitFeedback={handleActivityFeedback}
               onSelectField={handleSelectField}
               onOpenFeedbackModal={handleOpenFeedbackModal}
+              onDeleteFeedback={handleDeleteFarmerFeedback}
             />
           )}
 
@@ -818,7 +881,10 @@ export default function Home() {
           activities={activities}
           activeField={activeField}
           language={language}
+          recommendation={feedbackTargetRecommendation}
+          existingFeedback={feedbackTargetExisting}
           onSaveFeedback={handleSaveFarmerFeedback}
+          onDeleteFeedback={handleDeleteFarmerFeedback}
         />
       )}
     </div>
